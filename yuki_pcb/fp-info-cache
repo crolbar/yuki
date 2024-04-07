@@ -1,4 +1,4 @@
-460594894493222
+465732526243706
 Footprints
 YAAJ_BlackPill_1
 BlackPill module with pin headers and sockets. No SWD breakout
@@ -1119,6 +1119,27 @@ OLED
 0
 8
 4
+YUKI
+RUST_GEAR
+
+
+0
+0
+0
+YUKI
+SNOWFLAKE
+
+
+0
+0
+0
+YUKI
+SNOWFLAKE_SMALL
+
+
+0
+0
+0
 YUKI
 YUKI_YAAJ_WeAct_BlackPill_2
 Through hole headers for BluePill module. No SWD breakout. Fancy silkscreen.
