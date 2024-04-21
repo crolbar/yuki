@@ -1,0 +1,14 @@
+[tasks.right]
+script = [
+    "cargo objcopy --features right --bin yuki --release -- -O binary yuki.bin",
+    "echo \"press enter after the reset button has been pressed ...\"",
+    "read",
+    "dfu-util -a 0 --dfuse-address 0x08000000 -D yuki.bin"
+]
+[tasks.left]
+script = [
+    "cargo objcopy --bin yuki --release -- -O binary yuki.bin",
+    "echo \"press enter after the reset button has been pressed ...\"",
+    "read",
+    "dfu-util -a 0 --dfuse-address 0x08000000:force -D yuki.bin"
+]

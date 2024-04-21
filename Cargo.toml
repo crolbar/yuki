@@ -2,5 +2,20 @@
 name = "yuki"
 version = "0.1.0"
 edition = "2021"
+authors = ["crolbar <crolbar@crolbar.com>"]
 
 [dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = { version = "0.7.4", features = ["device"] }
+cortex-m-rtic = "1"
+embedded-hal = "1"
+keyberon = { git = "https://github.com/TeXitoi/keyberon.git" }
+panic-halt = "0.2"
+stm32f4xx-hal = { version = "0.20", features = ["stm32f401", "rtic1", "otg-fs", "usb_fs"] }
+usb-device = "0.3"
+nb = "1"
+ssd1306 = "0.8"
+embedded-graphics = "0.8"
+
+[features]
+right = []
