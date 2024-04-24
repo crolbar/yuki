@@ -9,16 +9,28 @@ mod layout;
 mod app {
     use super::*;
 
+    #[cfg(feature = "right")]
     use embedded_graphics::{
-        mono_font::{ascii::FONT_6X10, iso_8859_3::FONT_10X20, MonoTextStyleBuilder},
+        mono_font::{iso_8859_3::FONT_10X20, MonoTextStyleBuilder},
         pixelcolor::BinaryColor,
         prelude::*,
         text::{Baseline, Text},
     };
-    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+    use ssd1306::{mode::BufferedGraphicsMode, prelude::*, Ssd1306};
+
+    #[cfg(not(feature = "right"))]
+    use nb::block;
+
+    #[cfg(feature = "right")]
+    use hal::i2c::Mode;
 
     use hal::{
-        gpio::{EPin, Input, Output, PC13}, i2c::{self, DutyCycle, I2c, Mode}, otg_fs::{UsbBus, UsbBusType, USB}, pac::I2C2, prelude::*, timer::fugit::Rate
+        gpio::{EPin, Input, Output, PC13},
+        i2c::I2c,
+        otg_fs::{UsbBus, UsbBusType, USB},
+        pac::I2C2,
+        prelude::*,
+        serial
     };
 
     use usb_device::prelude::*;
@@ -33,20 +45,28 @@ mod app {
     pub struct Leds {}
     impl keyberon::keyboard::Leds for Leds {}
 
+    type Display = Ssd1306<I2CInterface<I2c<I2C2>>, DisplaySize128x32, BufferedGraphicsMode<DisplaySize128x32>>;
 
     #[shared]
     struct Shared {
         usb_dev: UsbDevice<'static, UsbBusType>,
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
+        #[lock_free]
+        layout: Layout<12, 4, 2, core::convert::Infallible>,
     }
 
     #[local]
     struct Local {
-        layout: Layout<12, 4, 1, core::convert::Infallible>,
         matrix: DirectPinMatrix<EPin<Input>, 6, 4>,
         debouncer: Debouncer<[[bool; 6]; 4]>,
         timer: hal::timer::counter::CounterHz<hal::pac::TIM2>,
+        tx: serial::Tx<hal::pac::USART1>,
+        rx: serial::Rx<hal::pac::USART1>,
         led: PC13<Output>,
+        #[cfg(feature = "right")]
+        display: Display,
+        #[cfg(feature = "right")]
+        buf: [u8; 4],
     }
 
 
@@ -150,6 +170,7 @@ mod app {
         let layout = Layout::new(&LAYERS);
 
 
+        let mut _display: Display;
         #[cfg(feature = "right")]
         {
             let scl = gpiob.pb10.into_alternate().set_open_drain();
@@ -165,14 +186,16 @@ mod app {
                     frequency: i2c_frequency,
                 },
                 &clocks,
-                );
+            );
             let interface = ssd1306::I2CDisplayInterface::new(i2c);
-            let mut display = Ssd1306::new(
+
+            _display = Ssd1306::new(
                 interface,
                 DisplaySize128x32,
                 DisplayRotation::Rotate0,
-                ).into_buffered_graphics_mode();
-            display.init().unwrap();
+            ).into_buffered_graphics_mode();
+
+            _display.init().unwrap();
 
             let text_style = MonoTextStyleBuilder::new()
                 .font(&FONT_10X20)
@@ -180,31 +203,136 @@ mod app {
                 .build();
 
             Text::with_baseline("yo", Point::new(10, 10), text_style, Baseline::Top)
-                .draw(&mut display)
+                .draw(&mut _display)
                 .unwrap();
 
-            display.flush().unwrap();
+            _display.flush().unwrap();
         }
 
+        let (pb6, pb7) = (gpiob.pb6, gpiob.pb7);
+        let serial_pins = cortex_m::interrupt::free(move |_cs| {
+            (pb6.into_alternate::<7>(), pb7.into_alternate::<7>())
+        });
 
+        let mut serial = serial::Serial::new(ctx.device.USART1, serial_pins, 38_400.bps(), &mut clocks).unwrap().with_u8_data();
+
+        serial.listen(serial::Event::RxNotEmpty);
+        let (tx, rx) = serial.split();
 
         (
             Shared {
                 usb_dev,
                 usb_class,
+                layout,
             },
             Local {
                 matrix: matrix.unwrap(),
                 timer,
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
-                layout,
-                led
+                tx, rx,
+                led,
+
+                #[cfg(feature = "right")]
+                display: _display,
+                #[cfg(feature = "right")]
+                buf: [0; 4],
             },
             init::Monotonics(),
-        )
+       )
     }
 
-    
+    #[task(priority = 1, capacity = 8, shared = [layout])]
+    fn handle_event(c: handle_event::Context, event: Event) {
+        c.shared.layout.event(event)
+    }
+
+    #[cfg(feature = "right")]
+    #[task(binds = USART1, priority = 2, local = [rx, buf])]
+    fn rx(ctx: rx::Context) {
+        if let Ok(b) = ctx.local.rx.read() {
+            ctx.local.buf.rotate_left(1);
+            ctx.local.buf[3] = b;
+
+            if ctx.local.buf[3] == b'\n' {
+                if let Ok(event) = deserialize(&ctx.local.buf[..]) {
+                    handle_event::spawn(event).unwrap();
+                }
+            }
+        }
+    }
+
+    #[task(binds=TIM2, priority=1, local=[debouncer, matrix, timer, tx, led], shared=[usb_dev, usb_class, layout])]
+    fn tick(ctx: tick::Context) {
+        ctx.local.timer.wait().ok();
+
+        let mtx = ctx.local.matrix.get().unwrap();
+
+        // if the two buttons and the reset button on the board are held
+        // and then the reset button is released this will load dfu
+        let dbnc = ctx.local.debouncer.get();
+        if (mtx[0][5] && !dbnc[0][5]) && (mtx[3][5] && !dbnc[3][5]) {
+            unsafe { cortex_m::asm::bootload(0x1FFF0000 as _) }
+        }
+
+        for event in ctx
+            .local
+            .debouncer
+            .events(mtx)
+            .map(transform_keypress_coordinates)
+        {
+            #[cfg(feature = "right")]
+            {
+                if event == Event::Press(1, 11) {
+                    display_shit::spawn().unwrap();
+                } 
+                handle_event::spawn(event).unwrap();
+            } 
+
+            #[cfg(not(feature = "right"))]
+            {
+                if event == Event::Press(1, 0) {
+                    ctx.local.led.toggle();
+                }
+
+                for &b in &serialize(event) {
+                    block!(ctx.local.tx.write(b)).unwrap();
+                }
+            }
+        }
+        ctx.shared.layout.tick();
+
+        #[cfg(feature = "right")]
+        {
+            write_kb_rep::spawn().unwrap();
+        }
+    }
+
+    #[cfg(feature = "right")]
+    #[task(priority = 1, capacity = 8, local = [display])]
+    fn display_shit(ctx: display_shit::Context) {
+        let display = ctx.local.display;
+        display.init().unwrap();
+
+        let text_style = MonoTextStyleBuilder::new()
+            .font(&FONT_10X20)
+            .text_color(BinaryColor::On)
+            .build();
+
+        Text::with_baseline("- has been pressed\n YAY", Point::new(1, 1), text_style, Baseline::Top)
+            .draw(display)
+            .unwrap();
+
+        display.flush().unwrap();
+    }
+
+    #[task(priority = 1, capacity = 8, shared = [layout, usb_dev, usb_class])]
+    fn write_kb_rep(mut ctx: write_kb_rep::Context) {
+        let report: KbHidReport = ctx.shared.layout.keycodes().collect();
+        if ctx.shared.usb_class.lock(|k| k.device_mut().set_keyboard_report(report.clone())) {
+            while let Ok(0) = ctx.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
+        }
+    }
+
     #[cfg(feature = "right")]
     fn transform_keypress_coordinates(e: Event) -> Event {
         e.transform(|i, j| (i, 11 - j))
@@ -215,24 +343,20 @@ mod app {
         e
     }
 
-    #[task(binds=TIM2, priority=1, local=[debouncer, matrix, timer, layout], shared=[usb_dev, usb_class])]
-    fn tick(mut ctx: tick::Context) {
-        ctx.local.timer.wait().ok();
-
-        for event in ctx
-            .local
-            .debouncer
-            .events(ctx.local.matrix.get().unwrap())
-            .map(transform_keypress_coordinates)
-        {
-            ctx.local.layout.event(event)
+    #[cfg(feature = "right")]
+    fn deserialize(bytes: &[u8]) -> Result<Event, ()> {
+        match *bytes {
+            [b'P', i, j, b'\n'] => Ok(Event::Press(i, j)),
+            [b'R', i, j, b'\n'] => Ok(Event::Release(i, j)),
+            _ => Err(()),
         }
+    }
 
-        ctx.local.layout.tick();
-
-        let report: KbHidReport = ctx.local.layout.keycodes().collect();
-        if ctx.shared.usb_class.lock(|k| k.device_mut().set_keyboard_report(report.clone())) {
-            while let Ok(0) = ctx.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
+    #[cfg(not(feature = "right"))]
+    fn serialize(e: Event) -> [u8; 4] {
+        match e {
+            Event::Press(i, j) => [b'P', i, j, b'\n'],
+            Event::Release(i, j) => [b'R', i, j, b'\n'],
         }
     }
 
