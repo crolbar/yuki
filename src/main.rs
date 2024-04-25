@@ -25,7 +25,7 @@ mod app {
     use hal::i2c::Mode;
 
     use hal::{
-        gpio::{EPin, Input, Output, PC13},
+        gpio::{self, EPin, Input},
         i2c::I2c,
         otg_fs::{UsbBus, UsbBusType, USB},
         pac::I2C2,
@@ -42,8 +42,16 @@ mod app {
 
     use crate::layout::LAYERS;
 
-    pub struct Leds {}
-    impl keyberon::keyboard::Leds for Leds {}
+    pub struct Leds { caps_lock:  gpio::gpioc::PC13<gpio::Output<gpio::PushPull>> }
+
+    impl keyberon::keyboard::Leds for Leds {
+        fn caps_lock(&mut self, status: bool) {
+            match status {
+                true => self.caps_lock.set_low(),
+                false => self.caps_lock.set_high(),
+            }
+        }
+    }
 
     type Display = Ssd1306<I2CInterface<I2c<I2C2>>, DisplaySize128x32, BufferedGraphicsMode<DisplaySize128x32>>;
 
@@ -62,7 +70,6 @@ mod app {
         timer: hal::timer::counter::CounterHz<hal::pac::TIM2>,
         tx: serial::Tx<hal::pac::USART1>,
         rx: serial::Rx<hal::pac::USART1>,
-        led: PC13<Output>,
         #[cfg(feature = "right")]
         display: Display,
         #[cfg(feature = "right")]
@@ -95,10 +102,6 @@ mod app {
         timer.listen(hal::timer::Event::Update);
 
 
-        let mut led = gpioc.pc13.into_push_pull_output();
-        led.set_low();
-
-
         let usb = USB {
             usb_global: ctx.device.OTG_FS_GLOBAL,
             usb_device: ctx.device.OTG_FS_DEVICE,
@@ -116,7 +119,7 @@ mod app {
 
         let usb_class = keyberon::new_class(
             unsafe {USB_BUS.as_ref().unwrap()},
-            Leds{}
+            Leds{ caps_lock: gpioc.pc13.into_push_pull_output() }
         );
 
         let usb_dev = UsbDeviceBuilder::new(
@@ -230,7 +233,6 @@ mod app {
                 timer,
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
                 tx, rx,
-                led,
 
                 #[cfg(feature = "right")]
                 display: _display,
@@ -261,7 +263,7 @@ mod app {
         }
     }
 
-    #[task(binds=TIM2, priority=1, local=[debouncer, matrix, timer, tx, led], shared=[usb_dev, usb_class, layout])]
+    #[task(binds=TIM2, priority=1, local=[debouncer, matrix, timer, tx], shared=[usb_dev, usb_class, layout])]
     fn tick(ctx: tick::Context) {
         ctx.local.timer.wait().ok();
 
@@ -282,18 +284,11 @@ mod app {
         {
             #[cfg(feature = "right")]
             {
-                if event == Event::Press(1, 11) {
-                    display_shit::spawn().unwrap();
-                } 
                 handle_event::spawn(event).unwrap();
             } 
 
             #[cfg(not(feature = "right"))]
             {
-                if event == Event::Press(1, 0) {
-                    ctx.local.led.toggle();
-                }
-
                 for &b in &serialize(event) {
                     block!(ctx.local.tx.write(b)).unwrap();
                 }
