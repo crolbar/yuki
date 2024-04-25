@@ -20,7 +20,7 @@ const L1_L2: Action = HoldTap(&HoldTapAction {
 
 const ALT_TAB: Action = HoldTap(&HoldTapAction {
     timeout: 180,
-    tap_hold_interval: 0,
+    tap_hold_interval: 180,
     config: HoldTapConfig::Default,
     hold: k(LAlt),
     tap: k(Tab),

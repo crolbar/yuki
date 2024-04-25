@@ -11,12 +11,14 @@ mod app {
 
     #[cfg(feature = "right")]
     use embedded_graphics::{
-        mono_font::{iso_8859_3::FONT_10X20, MonoTextStyleBuilder},
+        mono_font::{iso_8859_16::FONT_10X20 as FONT, MonoTextStyleBuilder},
         pixelcolor::BinaryColor,
         prelude::*,
         text::{Baseline, Text},
     };
     use ssd1306::{mode::BufferedGraphicsMode, prelude::*, Ssd1306};
+    #[cfg(feature = "right")]
+    use ufmt::uwrite;
 
     #[cfg(not(feature = "right"))]
     use nb::block;
@@ -74,6 +76,8 @@ mod app {
         display: Display,
         #[cfg(feature = "right")]
         buf: [u8; 4],
+        #[cfg(feature = "right")]
+        prev_layer: usize,
     }
 
 
@@ -195,13 +199,13 @@ mod app {
             _display = Ssd1306::new(
                 interface,
                 DisplaySize128x32,
-                DisplayRotation::Rotate0,
+                DisplayRotation::Rotate90,
             ).into_buffered_graphics_mode();
 
             _display.init().unwrap();
 
             let text_style = MonoTextStyleBuilder::new()
-                .font(&FONT_10X20)
+                .font(&FONT)
                 .text_color(BinaryColor::On)
                 .build();
 
@@ -238,6 +242,8 @@ mod app {
                 display: _display,
                 #[cfg(feature = "right")]
                 buf: [0; 4],
+                #[cfg(feature = "right")]
+                prev_layer: 0,
             },
             init::Monotonics(),
        )
@@ -298,26 +304,37 @@ mod app {
 
         #[cfg(feature = "right")]
         {
+            display_shit::spawn().unwrap();
             write_kb_rep::spawn().unwrap();
         }
     }
 
     #[cfg(feature = "right")]
-    #[task(priority = 1, capacity = 8, local = [display])]
+    #[task(priority = 1, capacity = 8, local = [display, prev_layer], shared = [layout])]
     fn display_shit(ctx: display_shit::Context) {
-        let display = ctx.local.display;
-        display.init().unwrap();
+        let curr_layer = ctx.shared.layout.current_layer();
 
-        let text_style = MonoTextStyleBuilder::new()
-            .font(&FONT_10X20)
-            .text_color(BinaryColor::On)
-            .build();
+        if &curr_layer != ctx.local.prev_layer {
+            let display = ctx.local.display;
 
-        Text::with_baseline("- has been pressed\n YAY", Point::new(1, 1), text_style, Baseline::Top)
-            .draw(display)
-            .unwrap();
+            display.init().unwrap();
 
-        display.flush().unwrap();
+            let text_style = MonoTextStyleBuilder::new()
+                .font(&FONT)
+                .text_color(BinaryColor::On)
+                .build();
+
+            let mut txt: heapless::String<32> = heapless::String::new();
+            let _ = uwrite!(&mut txt, "L {}", curr_layer);
+
+            Text::with_baseline(&txt, Point::new(2, 50), text_style, Baseline::Top)
+                .draw(display)
+                .unwrap();
+
+            display.flush().unwrap();
+
+            *ctx.local.prev_layer = curr_layer;
+        }
     }
 
     #[task(priority = 1, capacity = 8, shared = [layout, usb_dev, usb_class])]
