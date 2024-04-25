@@ -52,7 +52,7 @@ mod app {
         usb_dev: UsbDevice<'static, UsbBusType>,
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
         #[lock_free]
-        layout: Layout<12, 4, 2, core::convert::Infallible>,
+        layout: Layout<12, 4, 4, core::convert::Infallible>,
     }
 
     #[local]
