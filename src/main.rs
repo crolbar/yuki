@@ -10,39 +10,44 @@ mod app {
     use super::*;
 
     #[cfg(feature = "right")]
-    use embedded_graphics::{
-        mono_font::{iso_8859_16::FONT_10X20 as FONT, MonoTextStyleBuilder},
-        pixelcolor::BinaryColor,
-        prelude::*,
-        text::{Baseline, Text},
+    use {
+        embedded_graphics::{
+            mono_font::{iso_8859_16::FONT_10X20 as FONT, MonoTextStyleBuilder},
+            pixelcolor::BinaryColor,
+            prelude::*,
+            text::{Baseline, Text},
+        },
+
+        hal::i2c::Mode,
+
+        ufmt::uwrite,
     };
+
     use ssd1306::{mode::BufferedGraphicsMode, prelude::*, Ssd1306};
-    #[cfg(feature = "right")]
-    use ufmt::uwrite;
 
-    #[cfg(not(feature = "right"))]
-    use nb::block;
+    use {
+        hal::{
+            gpio::{self, EPin, Input},
+            otg_fs::{UsbBus, UsbBusType, USB},
+            prelude::*,
+            i2c::I2c,
+            pac::I2C2,
+            serial
+        },
 
-    #[cfg(feature = "right")]
-    use hal::i2c::Mode;
+        nb::block,
 
-    use hal::{
-        gpio::{self, EPin, Input},
-        i2c::I2c,
-        otg_fs::{UsbBus, UsbBusType, USB},
-        pac::I2C2,
-        prelude::*,
-        serial
+        usb_device::prelude::*,
+
+        keyberon::{
+            debounce::Debouncer,
+            key_code::KbHidReport,
+            layout::{Event, Layout},
+            matrix::DirectPinMatrix,
+        },
+
+        crate::layout::LAYERS,
     };
-
-    use usb_device::prelude::*;
-
-    use keyberon::debounce::Debouncer;
-    use keyberon::key_code::KbHidReport;
-    use keyberon::layout::{Event, Layout};
-    use keyberon::matrix::DirectPinMatrix;
-
-    use crate::layout::LAYERS;
 
     pub struct Leds { caps_lock:  gpio::gpioc::PC13<gpio::Output<gpio::PushPull>> }
 
@@ -63,6 +68,10 @@ mod app {
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
         #[lock_free]
         layout: Layout<12, 4, 4, core::convert::Infallible>,
+        right_usb: bool,
+        #[cfg(feature = "right")]
+        #[lock_free]
+        oled_refresh: bool,
     }
 
     #[local]
@@ -72,10 +81,9 @@ mod app {
         timer: hal::timer::counter::CounterHz<hal::pac::TIM2>,
         tx: serial::Tx<hal::pac::USART1>,
         rx: serial::Rx<hal::pac::USART1>,
+        buf: [u8; 4],
         #[cfg(feature = "right")]
         display: Display,
-        #[cfg(feature = "right")]
-        buf: [u8; 4],
         #[cfg(feature = "right")]
         prev_layer: usize,
     }
@@ -121,9 +129,12 @@ mod app {
             USB_BUS.replace(UsbBus::new(usb, &mut EP_MEMORY));
         }
 
+        let mut led = gpioc.pc13.into_push_pull_output();
+        led.set_high();
+
         let usb_class = keyberon::new_class(
             unsafe {USB_BUS.as_ref().unwrap()},
-            Leds{ caps_lock: gpioc.pc13.into_push_pull_output() }
+            Leds{ caps_lock: led }
         );
 
         let usb_dev = UsbDeviceBuilder::new(
@@ -177,6 +188,7 @@ mod app {
         let layout = Layout::new(&LAYERS);
 
 
+        #[cfg(feature = "right")]
         let mut _display: Display;
         #[cfg(feature = "right")]
         {
@@ -226,22 +238,26 @@ mod app {
         serial.listen(serial::Event::RxNotEmpty);
         let (tx, rx) = serial.split();
 
+        let right_usb = true; 
+
         (
             Shared {
                 usb_dev,
                 usb_class,
                 layout,
+                right_usb,
+                #[cfg(feature = "right")]
+                oled_refresh: false,
             },
             Local {
                 matrix: matrix.unwrap(),
                 timer,
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
+                buf: [0; 4],
                 tx, rx,
 
                 #[cfg(feature = "right")]
                 display: _display,
-                #[cfg(feature = "right")]
-                buf: [0; 4],
                 #[cfg(feature = "right")]
                 prev_layer: 0,
             },
@@ -254,24 +270,37 @@ mod app {
         c.shared.layout.event(event)
     }
 
-    #[cfg(feature = "right")]
-    #[task(binds = USART1, priority = 2, local = [rx, buf])]
-    fn rx(ctx: rx::Context) {
+    #[task(binds = USART1, priority = 2, local = [rx, buf], shared = [right_usb])]
+    fn rx(mut ctx: rx::Context) {
         if let Ok(b) = ctx.local.rx.read() {
             ctx.local.buf.rotate_left(1);
             ctx.local.buf[3] = b;
 
             if ctx.local.buf[3] == b'\n' {
                 if let Ok(event) = deserialize(&ctx.local.buf[..]) {
+                    if event == Event::Press(3, 9) {
+                        ctx.shared.right_usb.lock(|right_usb|{
+                            *right_usb = !*right_usb;
+                        })
+                    }
+
                     handle_event::spawn(event).unwrap();
                 }
             }
         }
     }
 
-    #[task(binds=TIM2, priority=1, local=[debouncer, matrix, timer, tx], shared=[usb_dev, usb_class, layout])]
-    fn tick(ctx: tick::Context) {
+    #[task(
+        binds=TIM2,
+        priority=1,
+        local=[debouncer, matrix, timer, tx],
+        shared=[usb_dev, usb_class, layout, right_usb, oled_refresh]
+    )]
+    fn tick(mut ctx: tick::Context) {
         ctx.local.timer.wait().ok();
+
+        let mut use_right_usb = false; 
+        ctx.shared.right_usb.lock(|u| use_right_usb = *u);
 
         let mtx = ctx.local.matrix.get().unwrap();
 
@@ -290,31 +319,49 @@ mod app {
         {
             #[cfg(feature = "right")]
             {
-                handle_event::spawn(event).unwrap();
-            } 
+                if event == Event::Press(3, 9) {
+                    ctx.shared.right_usb.lock(|right_usb|{
+                        *right_usb = !*right_usb;
+                    });
 
-            #[cfg(not(feature = "right"))]
-            {
-                for &b in &serialize(event) {
-                    block!(ctx.local.tx.write(b)).unwrap();
+                    *ctx.shared.oled_refresh = true;
                 }
+            }
+
+            handle_event::spawn(event).unwrap();
+            for &b in &serialize(event) {
+                block!(ctx.local.tx.write(b)).unwrap();
             }
         }
         ctx.shared.layout.tick();
 
+        #[cfg(not(feature = "right"))]
+        {
+            if !use_right_usb {
+                write_kb_rep::spawn().unwrap();
+            }
+        }
+
         #[cfg(feature = "right")]
         {
             display_shit::spawn().unwrap();
-            write_kb_rep::spawn().unwrap();
+            if use_right_usb {
+                write_kb_rep::spawn().unwrap();
+            }
         }
     }
 
     #[cfg(feature = "right")]
-    #[task(priority = 1, capacity = 8, local = [display, prev_layer], shared = [layout])]
-    fn display_shit(ctx: display_shit::Context) {
+    #[task(priority = 1, capacity = 8, local = [display, prev_layer], shared = [layout, right_usb, oled_refresh])]
+    fn display_shit(mut ctx: display_shit::Context) {
         let curr_layer = ctx.shared.layout.current_layer();
 
         if &curr_layer != ctx.local.prev_layer {
+            *ctx.shared.oled_refresh = true;
+            *ctx.local.prev_layer = curr_layer;
+        }
+
+        if *ctx.shared.oled_refresh {
             let display = ctx.local.display;
 
             display.init().unwrap();
@@ -331,9 +378,20 @@ mod app {
                 .draw(display)
                 .unwrap();
 
+            txt = heapless::String::new();
+            ctx.shared.right_usb.lock(|right_usb| {
+                let _ = uwrite!(&mut txt, "{}", 
+                    if *right_usb { "-->" } else { "<--" }
+                );
+            });
+
+            Text::with_baseline(&txt, Point::new(2, 5), text_style, Baseline::Top)
+                .draw(display)
+                .unwrap();
+
             display.flush().unwrap();
 
-            *ctx.local.prev_layer = curr_layer;
+            *ctx.shared.oled_refresh = false;
         }
     }
 
@@ -346,16 +404,11 @@ mod app {
     }
 
     #[cfg(feature = "right")]
-    fn transform_keypress_coordinates(e: Event) -> Event {
-        e.transform(|i, j| (i, 11 - j))
-    }
+    fn transform_keypress_coordinates(e: Event) -> Event { e.transform(|i, j| (i, 11 - j)) }
 
     #[cfg(not(feature = "right"))]
-    fn transform_keypress_coordinates(e: Event) -> Event {
-        e
-    }
+    fn transform_keypress_coordinates(e: Event) -> Event { e }
 
-    #[cfg(feature = "right")]
     fn deserialize(bytes: &[u8]) -> Result<Event, ()> {
         match *bytes {
             [b'P', i, j, b'\n'] => Ok(Event::Press(i, j)),
@@ -364,7 +417,6 @@ mod app {
         }
     }
 
-    #[cfg(not(feature = "right"))]
     fn serialize(e: Event) -> [u8; 4] {
         match e {
             Event::Press(i, j) => [b'P', i, j, b'\n'],

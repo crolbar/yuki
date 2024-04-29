@@ -3,12 +3,12 @@ script = [
     "cargo objcopy --features right --bin yuki --release -- -O binary yuki.bin",
     "echo \"press enter after the RIGHT board is in dfu ...\"",
     "read",
-    "dfu-util -a 0 --dfuse-address 0x08000000:leave -D yuki.bin",
+    "sudo dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000:leave -D yuki.bin",
 
     "cargo objcopy --bin yuki --release -- -O binary yuki.bin",
     "echo \"press enter after the LEFT board is in dfu ...\"",
     "read",
-    "dfu-util -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
+    "sudo dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
 ]
 
 [tasks.right]
@@ -16,7 +16,7 @@ script = [
     "cargo objcopy --features right --bin yuki --release -- -O binary yuki.bin",
     "echo \"press enter after the reset button has been pressed ...\"",
     "read",
-    "dfu-util -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
+    "sudo dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
 ]
 
 [tasks.left]
@@ -24,5 +24,5 @@ script = [
     "cargo objcopy --bin yuki --release -- -O binary yuki.bin",
     "echo \"press enter after the reset button has been pressed ...\"",
     "read",
-    "dfu-util -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
+    "sudo dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000:leave -D yuki.bin"
 ]
