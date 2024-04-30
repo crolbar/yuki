@@ -68,7 +68,7 @@ mod app {
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
         #[lock_free]
         layout: Layout<12, 4, 4, core::convert::Infallible>,
-        right_usb: bool,
+        use_right_usb: bool,
         #[cfg(feature = "right")]
         #[lock_free]
         oled_refresh: bool,
@@ -238,14 +238,12 @@ mod app {
         serial.listen(serial::Event::RxNotEmpty);
         let (tx, rx) = serial.split();
 
-        let right_usb = true; 
-
         (
             Shared {
                 usb_dev,
                 usb_class,
                 layout,
-                right_usb,
+                use_right_usb: true,
                 #[cfg(feature = "right")]
                 oled_refresh: false,
             },
@@ -270,7 +268,7 @@ mod app {
         c.shared.layout.event(event)
     }
 
-    #[task(binds = USART1, priority = 2, local = [rx, buf], shared = [right_usb])]
+    #[task(binds = USART1, priority = 2, local = [rx, buf], shared = [use_right_usb])]
     fn rx(mut ctx: rx::Context) {
         if let Ok(b) = ctx.local.rx.read() {
             ctx.local.buf.rotate_left(1);
@@ -279,7 +277,7 @@ mod app {
             if ctx.local.buf[3] == b'\n' {
                 if let Ok(event) = deserialize(&ctx.local.buf[..]) {
                     if event == Event::Press(3, 9) {
-                        ctx.shared.right_usb.lock(|right_usb|{
+                        ctx.shared.use_right_usb.lock(|right_usb|{
                             *right_usb = !*right_usb;
                         })
                     }
@@ -294,13 +292,12 @@ mod app {
         binds=TIM2,
         priority=1,
         local=[debouncer, matrix, timer, tx],
-        shared=[usb_dev, usb_class, layout, right_usb, oled_refresh]
+        shared=[usb_dev, usb_class, layout, use_right_usb, oled_refresh]
     )]
     fn tick(mut ctx: tick::Context) {
         ctx.local.timer.wait().ok();
 
-        let mut use_right_usb = false; 
-        ctx.shared.right_usb.lock(|u| use_right_usb = *u);
+        let use_right_usb = ctx.shared.use_right_usb.lock(|u| *u);
 
         let mtx = ctx.local.matrix.get().unwrap();
 
@@ -320,9 +317,7 @@ mod app {
             #[cfg(feature = "right")]
             {
                 if event == Event::Press(3, 9) {
-                    ctx.shared.right_usb.lock(|right_usb|{
-                        *right_usb = !*right_usb;
-                    });
+                    ctx.shared.use_right_usb.lock(|uru|{ *uru = !*uru });
 
                     *ctx.shared.oled_refresh = true;
                 }
@@ -335,24 +330,20 @@ mod app {
         }
         ctx.shared.layout.tick();
 
-        #[cfg(not(feature = "right"))]
-        {
-            if !use_right_usb {
+        if ctx.shared.usb_dev.lock(|d| d.state()) == UsbDeviceState::Configured {
+            if 
+                (cfg!(feature = "right") && use_right_usb) ||
+                (cfg!(not(feature = "right")) && !use_right_usb)
+            {
                 write_kb_rep::spawn().unwrap();
             }
         }
 
-        #[cfg(feature = "right")]
-        {
-            display_shit::spawn().unwrap();
-            if use_right_usb {
-                write_kb_rep::spawn().unwrap();
-            }
-        }
+        #[cfg(feature = "right")] { display_shit::spawn().unwrap() }
     }
 
     #[cfg(feature = "right")]
-    #[task(priority = 1, capacity = 8, local = [display, prev_layer], shared = [layout, right_usb, oled_refresh])]
+    #[task(priority = 1, capacity = 8, local = [display, prev_layer], shared = [layout, use_right_usb, oled_refresh])]
     fn display_shit(mut ctx: display_shit::Context) {
         let curr_layer = ctx.shared.layout.current_layer();
 
@@ -379,9 +370,9 @@ mod app {
                 .unwrap();
 
             txt = heapless::String::new();
-            ctx.shared.right_usb.lock(|right_usb| {
+            ctx.shared.use_right_usb.lock(|uru| {
                 let _ = uwrite!(&mut txt, "{}", 
-                    if *right_usb { "-->" } else { "<--" }
+                    if *uru { "-->" } else { "<--" }
                 );
             });
 
