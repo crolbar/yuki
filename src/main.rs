@@ -79,6 +79,7 @@ mod app {
         matrix: DirectPinMatrix<EPin<Input>, 6, 4>,
         debouncer: Debouncer<[[bool; 6]; 4]>,
         timer: hal::timer::counter::CounterHz<hal::pac::TIM2>,
+        transform: fn(Event) -> Event,
         tx: serial::Tx<hal::pac::USART1>,
         rx: serial::Rx<hal::pac::USART1>,
         buf: [u8; 4],
@@ -89,11 +90,13 @@ mod app {
     }
 
 
-    #[init]
+    #[init(
+        local = [
+            bus: Option<usb_device::bus::UsbBusAllocator<UsbBusType>> = None,
+            ep_memory: [u32; 1024] = [0; 1024]
+        ]
+    )]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        static mut EP_MEMORY: [u32; 1024] = [0; 1024];
-        static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<UsbBusType>> = None;
-
         let mut clocks = ctx
             .device
             .RCC
@@ -114,123 +117,81 @@ mod app {
         timer.listen(hal::timer::Event::Update);
 
 
-        let usb = USB {
-            usb_global: ctx.device.OTG_FS_GLOBAL,
-            usb_device: ctx.device.OTG_FS_DEVICE,
-            usb_pwrclk: ctx.device.OTG_FS_PWRCLK,
-            pin_dm: gpioa.pa11.into(),
-            pin_dp: gpioa.pa12.into_alternate().into(),
-            hclk: clocks.hclk(),
-        };
-
-
-
-        unsafe {
-            USB_BUS.replace(UsbBus::new(usb, &mut EP_MEMORY));
-        }
-
-        let mut led = gpioc.pc13.into_push_pull_output();
-        led.set_high();
-
-        let usb_class = keyberon::new_class(
-            unsafe {USB_BUS.as_ref().unwrap()},
-            Leds{ caps_lock: led }
+        let usb = USB::new(
+            (
+                ctx.device.OTG_FS_GLOBAL,
+                ctx.device.OTG_FS_DEVICE,
+                ctx.device.OTG_FS_PWRCLK,
+            ), 
+            (gpioa.pa11, gpioa.pa12), &clocks
         );
 
-        let usb_dev = UsbDeviceBuilder::new(
-            unsafe { USB_BUS.as_ref().unwrap() },
-            UsbVidPid(0x16c0, 0x27dd),
-        )
+
+        let mut caps_lock = gpioc.pc13.into_push_pull_output();
+        caps_lock.set_high();
+
+        *ctx.local.bus = Some(
+            UsbBus::new(usb, ctx.local.ep_memory)
+        );
+        let usb_bus = ctx.local.bus.as_ref().unwrap();
+
+        let usb_class = keyberon::new_class(usb_bus, Leds {caps_lock});
+
+        let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27db))
         .strings(&[StringDescriptors::default()
-            .manufacturer("Fake Company")
-            .product("Product")
-            .serial_number("TEST")])
+            .manufacturer("crolbar")
+            .product("YUKI")
+            .serial_number("1337")])
         .unwrap()
         .build();
 
 
-        let matrix_pins = [
-            [
-                Some(gpioa.pa9.into_pull_up_input().erase()),
-                Some(gpioa.pa8.into_pull_up_input().erase()),
-                Some(gpiob.pb15.into_pull_up_input().erase()),
-                Some(gpiob.pb14.into_pull_up_input().erase()),
-                Some(gpiob.pb13.into_pull_up_input().erase()),
-                Some(gpiob.pb12.into_pull_up_input().erase()),
-            ],
-            [
-                Some(gpiob.pb9.into_pull_up_input().erase()),
-                Some(gpiob.pb8.into_pull_up_input().erase()),
-                Some(gpiob.pb5.into_pull_up_input().erase()),
-                Some(gpiob.pb4.into_pull_up_input().erase()),
-                Some(gpioa.pa15.into_pull_up_input().erase()),
-                Some(gpioa.pa10.into_pull_up_input().erase()),
-            ],
-            [
-                Some(gpiob.pb1.into_pull_up_input().erase()),
-                Some(gpiob.pb0.into_pull_up_input().erase()),
-                Some(gpioa.pa7.into_pull_up_input().erase()),
-                Some(gpioa.pa6.into_pull_up_input().erase()),
-                Some(gpioa.pa5.into_pull_up_input().erase()),
-                Some(gpioa.pa4.into_pull_up_input().erase()),
-            ],
-            [
-                None,
-                None,
-                Some(gpioa.pa3.into_pull_up_input().erase()),
-                Some(gpioa.pa2.into_pull_up_input().erase()),
-                Some(gpioa.pa1.into_pull_up_input().erase()),
-                Some(gpioa.pa0.into_pull_up_input().erase()),
-            ],
-        ];
-        let matrix = cortex_m::interrupt::free(move |_cs| DirectPinMatrix::new(matrix_pins));
-
-        let layout = Layout::new(&LAYERS);
-
+        let matrix = cortex_m::interrupt::free(move |_| {
+            DirectPinMatrix::new([
+                [
+                    Some(gpioa.pa9.into_pull_up_input().erase()),
+                    Some(gpioa.pa8.into_pull_up_input().erase()),
+                    Some(gpiob.pb15.into_pull_up_input().erase()),
+                    Some(gpiob.pb14.into_pull_up_input().erase()),
+                    Some(gpiob.pb13.into_pull_up_input().erase()),
+                    Some(gpiob.pb12.into_pull_up_input().erase()),
+                ],
+                [
+                    Some(gpiob.pb9.into_pull_up_input().erase()),
+                    Some(gpiob.pb8.into_pull_up_input().erase()),
+                    Some(gpiob.pb5.into_pull_up_input().erase()),
+                    Some(gpiob.pb4.into_pull_up_input().erase()),
+                    Some(gpioa.pa15.into_pull_up_input().erase()),
+                    Some(gpioa.pa10.into_pull_up_input().erase()),
+                ],
+                [
+                    Some(gpiob.pb1.into_pull_up_input().erase()),
+                    Some(gpiob.pb0.into_pull_up_input().erase()),
+                    Some(gpioa.pa7.into_pull_up_input().erase()),
+                    Some(gpioa.pa6.into_pull_up_input().erase()),
+                    Some(gpioa.pa5.into_pull_up_input().erase()),
+                    Some(gpioa.pa4.into_pull_up_input().erase()),
+                ],
+                [
+                    None,
+                    None,
+                    Some(gpioa.pa3.into_pull_up_input().erase()),
+                    Some(gpioa.pa2.into_pull_up_input().erase()),
+                    Some(gpioa.pa1.into_pull_up_input().erase()),
+                    Some(gpioa.pa0.into_pull_up_input().erase()),
+                ],
+            ]).unwrap()
+        });
 
         #[cfg(feature = "right")]
-        let mut _display: Display;
-        #[cfg(feature = "right")]
-        {
-            let scl = gpiob.pb10.into_alternate().set_open_drain();
-            let sda = gpiob.pb3.into_alternate().set_open_drain();
+        let display: Display = init_display(
+            gpiob.pb10.into_alternate().set_open_drain(),
+            gpiob.pb3.into_alternate().set_open_drain(),
+            ctx.device.I2C2, &clocks
+        );
 
-            use stm32f4xx_hal::time::Hertz;
-            let i2c_frequency: Hertz = 400_u32.kHz();
-
-            let i2c = I2c::new(
-                ctx.device.I2C2,
-                (scl, sda),
-                Mode::Standard {
-                    frequency: i2c_frequency,
-                },
-                &clocks,
-            );
-            let interface = ssd1306::I2CDisplayInterface::new(i2c);
-
-            _display = Ssd1306::new(
-                interface,
-                DisplaySize128x32,
-                DisplayRotation::Rotate90,
-            ).into_buffered_graphics_mode();
-
-            _display.init().unwrap();
-
-            let text_style = MonoTextStyleBuilder::new()
-                .font(&FONT)
-                .text_color(BinaryColor::On)
-                .build();
-
-            Text::with_baseline("yo", Point::new(10, 10), text_style, Baseline::Top)
-                .draw(&mut _display)
-                .unwrap();
-
-            _display.flush().unwrap();
-        }
-
-        let (pb6, pb7) = (gpiob.pb6, gpiob.pb7);
-        let serial_pins = cortex_m::interrupt::free(move |_cs| {
-            (pb6.into_alternate::<7>(), pb7.into_alternate::<7>())
+        let serial_pins = cortex_m::interrupt::free(move |_| {
+            (gpiob.pb6.into_alternate::<7>(), gpiob.pb7.into_alternate::<7>())
         });
 
         let mut serial = serial::Serial::new(ctx.device.USART1, serial_pins, 38_400.bps(), &mut clocks).unwrap().with_u8_data();
@@ -238,24 +199,30 @@ mod app {
         serial.listen(serial::Event::RxNotEmpty);
         let (tx, rx) = serial.split();
 
+        let transform: fn(Event) -> Event = match cfg!(feature = "right") {
+            true => |e| e.transform(|i, j| (i, 11 - j)),
+            false => |e| e
+        };
+
         (
             Shared {
                 usb_dev,
                 usb_class,
-                layout,
+                layout: Layout::new(&LAYERS),
                 use_right_usb: true,
                 #[cfg(feature = "right")]
                 oled_refresh: false,
             },
             Local {
-                matrix: matrix.unwrap(),
+                matrix,
                 timer,
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
+                transform,
                 buf: [0; 4],
                 tx, rx,
 
                 #[cfg(feature = "right")]
-                display: _display,
+                display,
                 #[cfg(feature = "right")]
                 prev_layer: 0,
             },
@@ -291,7 +258,7 @@ mod app {
     #[task(
         binds=TIM2,
         priority=1,
-        local=[debouncer, matrix, timer, tx],
+        local=[debouncer, matrix, timer, transform, tx],
         shared=[usb_dev, usb_class, layout, use_right_usb, oled_refresh]
     )]
     fn tick(mut ctx: tick::Context) {
@@ -312,7 +279,7 @@ mod app {
             .local
             .debouncer
             .events(mtx)
-            .map(transform_keypress_coordinates)
+            .map(ctx.local.transform)
         {
             #[cfg(feature = "right")]
             {
@@ -394,12 +361,6 @@ mod app {
         }
     }
 
-    #[cfg(feature = "right")]
-    fn transform_keypress_coordinates(e: Event) -> Event { e.transform(|i, j| (i, 11 - j)) }
-
-    #[cfg(not(feature = "right"))]
-    fn transform_keypress_coordinates(e: Event) -> Event { e }
-
     fn deserialize(bytes: &[u8]) -> Result<Event, ()> {
         match *bytes {
             [b'P', i, j, b'\n'] => Ok(Event::Press(i, j)),
@@ -419,21 +380,55 @@ mod app {
 
     #[task(binds = OTG_FS, priority = 3, shared = [usb_dev, usb_class])]
     fn usb_tx(cx: usb_tx::Context) {
-        (cx.shared.usb_dev, cx.shared.usb_class).lock(|mut usb_dev, mut usb_class| {
-            usb_poll(&mut usb_dev, &mut usb_class);
+        (cx.shared.usb_dev, cx.shared.usb_class)
+        .lock(|usb_dev, kb| {
+            if usb_dev.poll(&mut [kb]) { kb.poll() }
         });
     }
 
     #[task(binds = OTG_FS_WKUP, priority = 3, shared = [usb_dev, usb_class])]
     fn usb_rx(cx: usb_rx::Context) {
-        (cx.shared.usb_dev, cx.shared.usb_class).lock(|mut usb_dev, mut usb_class| {
-            usb_poll(&mut usb_dev, &mut usb_class);
+        (cx.shared.usb_dev, cx.shared.usb_class)
+        .lock(|usb_dev, kb| {
+            if usb_dev.poll(&mut [kb]) { kb.poll() }
         });
     }
 
-    fn usb_poll(usb_dev: &mut UsbDevice<'static, UsbBusType>, keyboard: &mut keyberon::Class<'static, UsbBusType, Leds>) {
-        if usb_dev.poll(&mut [keyboard]) {
-            keyboard.poll();
+    #[cfg(feature = "right")]
+    fn init_display(
+        scl: gpio::gpiob::PB10<gpio::Alternate<4, gpio::OpenDrain>>,
+        sda: gpio::gpiob::PB3<gpio::Alternate<9, hal::gpio::OpenDrain>>,
+        i2c2: I2C2,
+        clocks: &hal::rcc::Clocks
+    ) -> Display {
+
+        let mut display = Ssd1306::new(
+            ssd1306::I2CDisplayInterface::new(
+                I2c::new(
+                    i2c2, (scl, sda),
+                    Mode::Standard { frequency: 400_u32.kHz() }, 
+                    &clocks
+                )
+            ),
+            DisplaySize128x32,
+            DisplayRotation::Rotate90,
+        ).into_buffered_graphics_mode();
+
+        {
+            display.init().unwrap();
+
+            let text_style = MonoTextStyleBuilder::new()
+                .font(&FONT)
+                .text_color(BinaryColor::On)
+                .build();
+
+            Text::with_baseline("yo", Point::new(10, 10), text_style, Baseline::Top)
+                .draw(&mut display)
+                .unwrap();
+
+            display.flush().unwrap();
         }
+
+        display
     }
 }
