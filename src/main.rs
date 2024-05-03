@@ -5,7 +5,7 @@ use panic_halt as _;
 use stm32f4xx_hal as hal;
 mod layout;
 
-#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [TIM1_CC])]
+#[rtic::app(device = hal::pac, dispatchers = [TIM1_CC])]
 mod app {
     use super::*;
 
