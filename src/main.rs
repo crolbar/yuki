@@ -235,19 +235,15 @@ mod app {
         c.shared.layout.event(event)
     }
 
-    #[task(binds = USART1, priority = 2, local = [rx, buf], shared = [use_right_usb])]
-    fn rx(mut ctx: rx::Context) {
+    #[task(binds = USART1, priority = 2, local = [rx, buf])]
+    fn rx(ctx: rx::Context) {
         if let Ok(b) = ctx.local.rx.read() {
             ctx.local.buf.rotate_left(1);
             ctx.local.buf[3] = b;
 
             if ctx.local.buf[3] == b'\n' {
                 if let Ok(event) = deserialize(&ctx.local.buf[..]) {
-                    if event == Event::Press(3, 9) {
-                        ctx.shared.use_right_usb.lock(|right_usb|{
-                            *right_usb = !*right_usb;
-                        })
-                    }
+                    if event == Event::Press(3, 9) { switch_used_usb::spawn().unwrap() }
 
                     handle_event::spawn(event).unwrap();
                 }
@@ -259,7 +255,7 @@ mod app {
         binds=TIM2,
         priority=1,
         local=[debouncer, matrix, timer, transform, tx],
-        shared=[usb_dev, usb_class, layout, use_right_usb, oled_refresh]
+        shared=[usb_dev, usb_class, layout, use_right_usb]
     )]
     fn tick(mut ctx: tick::Context) {
         ctx.local.timer.wait().ok();
@@ -281,14 +277,7 @@ mod app {
             .events(mtx)
             .map(ctx.local.transform)
         {
-            #[cfg(feature = "right")]
-            {
-                if event == Event::Press(3, 9) {
-                    ctx.shared.use_right_usb.lock(|uru|{ *uru = !*uru });
-
-                    *ctx.shared.oled_refresh = true;
-                }
-            }
+            if event == Event::Press(3, 9) { switch_used_usb::spawn().unwrap() }
 
             handle_event::spawn(event).unwrap();
             for &b in &serialize(event) {
@@ -307,6 +296,17 @@ mod app {
         }
 
         #[cfg(feature = "right")] { display_shit::spawn().unwrap() }
+    }
+
+    #[task(priority = 1, capacity = 8, shared = [layout, use_right_usb, oled_refresh])]
+    fn switch_used_usb(mut ctx: switch_used_usb::Context) {
+        if ctx.shared.layout.current_layer() == 2 {
+            ctx.shared.use_right_usb.lock(|uru|{ *uru = !*uru });
+
+            #[cfg(feature = "right")] {
+                *ctx.shared.oled_refresh = true;
+            }
+        }
     }
 
     #[cfg(feature = "right")]
