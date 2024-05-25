@@ -774,10 +774,8 @@ name = "yuki"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
- "cortex-m-rt",
  "cortex-m-rtic",
  "embedded-graphics",
- "embedded-hal 1.0.0",
  "heapless 0.7.17",
  "keyberon",
  "nb 1.1.0",

@@ -61,10 +61,8 @@ mod app {
         matrix: DirectPinMatrix<EPin<Input>, 6, 4>,
         debouncer: Debouncer<[[bool; 6]; 4]>,
         timer: CounterHz<TIM2>,
-        transform: fn(Event) -> Event,
         tx: serial::Tx<USART1>,
         rx: serial::Rx<USART1>,
-        buf: [u8; 4],
         enter_dfu: bool,
         #[cfg(feature = "right")]
         oled: OLED,
@@ -177,11 +175,6 @@ mod app {
         serial.listen(serial::Event::RxNotEmpty);
         let (tx, rx) = serial.split();
 
-        let transform: fn(Event) -> Event = match cfg!(feature = "right") {
-            true => |e| e.transform(|i, j| (i, 11 - j)),
-            false => |e| e
-        };
-
         (
             Shared {
                 usb_dev,
@@ -193,8 +186,6 @@ mod app {
                 matrix,
                 timer,
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
-                transform,
-                buf: [0; 4],
                 tx, rx,
                 enter_dfu,
                 #[cfg(feature = "right")]
@@ -220,16 +211,14 @@ mod app {
         ctx.shared.layout.lock(|l| l.event(event))
     }
 
-    #[task(binds = USART1, priority = 2, local = [rx, buf])]
+    #[task(binds = USART1, priority = 2, local = [rx])]
     fn rx(ctx: rx::Context) {
         if let Ok(b) = ctx.local.rx.read() {
-            ctx.local.buf.rotate_left(1);
-            ctx.local.buf[3] = b;
+            if let Ok(event) = de(b) {
+                #[cfg(not(feature = "right"))]
+                let event = event.transform(|i, j| (i, 11 - j));
 
-            if b == b'\n' {
-                if let Ok(event) = deserialize(ctx.local.buf) {
-                    handle_event::spawn(event).unwrap();
-                }
+                handle_event::spawn(event).unwrap();
             }
         }
     }
@@ -237,7 +226,7 @@ mod app {
     #[task(
         binds=TIM2,
         priority=1,
-        local=[debouncer, matrix, timer, transform, tx, oled],
+        local=[debouncer, matrix, timer, tx, oled],
         shared=[usb_dev, usb_class, layout, use_right_usb]
     )]
     fn tick(mut ctx: tick::Context) {
@@ -246,12 +235,13 @@ mod app {
         ctx.local
             .debouncer
             .events(ctx.local.matrix.get().unwrap())
-            .map(ctx.local.transform)
-            .for_each(|event| {
-                handle_event::spawn(event).unwrap();
-                serialize(event).iter().for_each(|&b|
-                    block!(ctx.local.tx.write(b)).unwrap()
-                )
+            .for_each(|e| {
+                block!(ctx.local.tx.write(ser(e))).unwrap();
+
+                #[cfg(feature = "right")]
+                let e = e.transform(|i, j| (i, 11 - j));
+
+                handle_event::spawn(e).unwrap();
             });
 
         ctx.shared.layout.lock(|l| l.tick());
@@ -270,7 +260,11 @@ mod app {
             }
         }
 
-        #[cfg(feature = "right")] { ctx.local.oled.draw(ctx.shared.layout.lock(|l| l.current_layer()), use_right_usb)}
+        #[cfg(feature = "right")] 
+        ctx.local.oled.draw(
+            ctx.shared.layout.lock(|l| l.current_layer()),
+            use_right_usb
+        )
     }
 
     #[idle(local = [enter_dfu])]
@@ -284,34 +278,30 @@ mod app {
         loop { rtic::export::wfi() }
     }
 
-    fn deserialize(bytes: &[u8]) -> Result<Event, ()> {
-        match *bytes {
-            [b'P', i, j, b'\n'] => Ok(Event::Press(i, j)),
-            [b'R', i, j, b'\n'] => Ok(Event::Release(i, j)),
-            _ => Err(()),
-        }
+    // im using one byte for the coords and the is_press status
+    // the last three bits are the y
+    // the second to last three are the x
+    // the first bit is the is_press status
+    //                                     press     5       2
+    // so for example Event::Press(2, 5) == (1) 0 (1 0 1) (0 1 0)
+    //
+    // this only works with 8 or less columns or rows
+    fn ser(e: Event) -> u8 {
+        let (y, x) = e.coord();
+        y | x << 3 | (e.is_press() as u8) << 7
     }
-
-    fn serialize(e: Event) -> [u8; 4] {
-        match e {
-            Event::Press(i, j) => [b'P', i, j, b'\n'],
-            Event::Release(i, j) => [b'R', i, j, b'\n'],
-        }
+    fn de(n: u8) -> Result<Event, ()> {
+        match n & 128 {
+            128 => Ok(Event::Press(n & 7, (n & 56) >> 3)),
+            0 => Ok(Event::Release(n & 7, (n & 56) >> 3)),
+            _ => Err(())
+        } 
     }
 
     use usb_device::class::UsbClass;
-
     #[task(binds = OTG_FS, priority = 3, shared = [usb_dev, usb_class])]
-    fn usb_tx(cx: usb_tx::Context) {
-        (cx.shared.usb_dev, cx.shared.usb_class)
-        .lock(|usb_dev, kb| {
-            if usb_dev.poll(&mut [kb]) { kb.poll() }
-        });
-    }
-
-    #[task(binds = OTG_FS_WKUP, priority = 3, shared = [usb_dev, usb_class])]
-    fn usb_rx(cx: usb_rx::Context) {
-        (cx.shared.usb_dev, cx.shared.usb_class)
+    fn usb(ctx: usb::Context) {
+        (ctx.shared.usb_dev, ctx.shared.usb_class)
         .lock(|usb_dev, kb| {
             if usb_dev.poll(&mut [kb]) { kb.poll() }
         });
