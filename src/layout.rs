@@ -1,10 +1,13 @@
 use keyberon::action::{k, m, Action::*, HoldTapAction, HoldTapConfig};
 use keyberon::key_code::KeyCode::*;
-
-type Action = keyberon::action::Action<core::convert::Infallible>;
+use crate::mouse::MAction;
+ 
+pub enum CustomAction { M(MAction), USB }
+type Action = keyberon::action::Action<CustomAction>;
 
 const LAYER0: Action = Action::DefaultLayer(0);
 const LAYER3: Action = Action::DefaultLayer(3);
+const LAYER4: Action = Action::DefaultLayer(4);
 
 const REDO: Action = m(&[LCtrl, Y].as_slice());
 const UNDO: Action = m(&[LCtrl, Z].as_slice());
@@ -29,6 +32,22 @@ const CTRL_ENTER: Action = HoldTap(&HoldTapAction {
     tap: k(Enter),
 });
 
+const USB: Action = Custom(CustomAction::USB);
+
+const M1: Action = Custom(CustomAction::M(MAction::LeftMB));
+const M2: Action = Custom(CustomAction::M(MAction::RightMB));
+const M3: Action = Custom(CustomAction::M(MAction::MiddleMB));
+
+const UP: Action = Custom(CustomAction::M(MAction::Up));
+const DOWN: Action = Custom(CustomAction::M(MAction::Down));
+const LEFT: Action = Custom(CustomAction::M(MAction::Left));
+const RIGHT: Action = Custom(CustomAction::M(MAction::Right));
+
+const SCROLL_UP: Action = Custom(CustomAction::M(MAction::ScrollUp));
+const SCROLL_DOWN: Action = Custom(CustomAction::M(MAction::ScrollDown));
+const SCROLL_LEFT: Action = Custom(CustomAction::M(MAction::ScrollLeft));
+const SCROLL_RIGHT: Action = Custom(CustomAction::M(MAction::ScrollRight));
+
 macro_rules! s {
     ($k:ident) => {
         m(&[LShift, $k].as_slice())
@@ -36,12 +55,12 @@ macro_rules! s {
 }
 
 
-pub const LAYERS: keyberon::layout::Layers<12, 4, 4> = keyberon::layout::layout! {
+pub const LAYERS: keyberon::layout::Layers<12, 4, 5, CustomAction> = keyberon::layout::layout! {
     {
         [ Grave   Quote   Comma       Dot   P       Y                   F        G      C           R     L   Slash  ],
         [ Escape  A       O           E     U       I                   D        H      T           N     S   Minus  ],
         [ LShift  SColon  Q           J     K       X                   B        M      W           V     Z   Delete ],
-        [ n       n       (2)         LGui  Space   {CTRL_ENTER}        LShift  (1)    {ALT_TAB}    t      n   n     ], 
+        [ n       n       (2)         LGui  Space   {CTRL_ENTER}        LShift  (1)    {ALT_TAB}    n     n   n      ], 
     }
     {
         [ Tab       {s!(Kb1)}   {s!(Kb2)}   {s!(Kb3)}   {s!(Kb4)}       {s!(Kb5)}               {s!(Kb6)}       {s!(Kb7)}   {s!(Kb8)}   {s!(Kb9)}    {s!(Kb0)}   t ],
@@ -50,15 +69,21 @@ pub const LAYERS: keyberon::layout::Layers<12, 4, 4> = keyberon::layout::layout!
         [ n         n           t           LGui        BSpace          {CTRL_ENTER}            LShift          (1)         {ALT_TAB}   t            n           n ],
     }
     {
-        [ t         F1      F2      F3          F4      F5                  F6      F7      F8          F9      F10     {LAYER3} ],
+        [ {LAYER3}  F1      F2      F3          F4      F5                  F6      F7      F8          F9      F10     {LAYER4} ],
         [ CapsLock  t       t       Insert      Pause   PScreen             Home    BSpace  Up          F11     F12     PgUp     ],
         [ LShift    {UNDO}  {CUT}   {COPY}      {PASTE} {REDO}              End     Left    Down        Right   t       PgDown   ],
-        [ n         n       t       LGui        Space   {CTRL_ENTER}        LShift  n       {ALT_TAB}   t       n       n        ],
+        [ n         n       t       LGui        Space   {CTRL_ENTER}        LShift  n       {ALT_TAB}   {USB}   n       n        ],
     }
     {
-        [ Grave     Q       W       E       R       T                       Y       U       I           O       P       {LAYER0} ],
+        [ n         n   n       n               n           n               n       n               n           n           {SCROLL_RIGHT}  n ],
+        [ Escape    n   {M2}    {M3}            {M1}        n               n       {SCROLL_LEFT}   {UP}        n           n               n ],
+        [ LShift    n   n       {SCROLL_DOWN}   {SCROLL_UP} n               n       {LEFT}          {DOWN}      {RIGHT}     n               n ],
+        [ n         n   (2)     LGui            Space       {CTRL_ENTER}    LShift  (1)             {ALT_TAB}   {LAYER0}    n               n ],
+    }
+    {
+        [ Grave     Q       W       E       R       T                       Y       U       I           O       P       n        ],
         [ Escape    A       S       D       F       G                       H       J       K           L       SColon  Quote    ],
         [ LShift    Z       X       C       V       B                       N       M       Comma       Dot     Slash   t        ],
-        [ n         n       (2)     LGui    Space   {CTRL_ENTER}            LShift (1)     {ALT_TAB}    t       n       n        ],
+        [ n         n       (2)     LGui    Space   {CTRL_ENTER}            LShift (1)     {ALT_TAB}   {LAYER0} n       n        ],
     } 
 };

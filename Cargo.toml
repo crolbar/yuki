@@ -16,6 +16,8 @@ ssd1306 = "0.8"
 embedded-graphics = "0.8"
 ufmt = "0.2.0"
 heapless = { version = "0.7.16", features = ["ufmt-write", "ufmt-impl"] }
+usbd-human-interface-device = "0.5.0"
+frunk = { version = "0.4", default-features = false }
 
 [features]
 right = []

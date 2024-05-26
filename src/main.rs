@@ -5,6 +5,7 @@ use panic_halt as _;
 use stm32f4xx_hal as hal;
 mod layout;
 mod oled;
+mod mouse;
 
 #[rtic::app(device = hal::pac, dispatchers = [TIM1_CC])]
 mod app {
@@ -28,13 +29,14 @@ mod app {
         keyberon::{
             debounce::Debouncer,
             key_code::KbHidReport,
-            layout::{Event, Layout},
+            layout::{Event, Layout, CustomEvent},
             matrix::DirectPinMatrix,
             keyboard
         },
 
-        layout::LAYERS,
+        layout::{LAYERS, CustomAction},
         oled::OLED,
+        mouse::Mouse,
     };
 
     pub struct Leds { caps_lock:  PC13<Output<PushPull>> }
@@ -52,8 +54,8 @@ mod app {
     struct Shared {
         usb_dev: UsbDevice<'static, UsbBusType>,
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
-        use_right_usb: bool,
-        layout: Layout<12, 4, 4, core::convert::Infallible>,
+        layout: Layout<12, 4, 5, CustomAction>,
+        mouse: Mouse
     }
 
     #[local]
@@ -64,6 +66,7 @@ mod app {
         tx: serial::Tx<USART1>,
         rx: serial::Rx<USART1>,
         enter_dfu: bool,
+        use_right_usb: bool,
         #[cfg(feature = "right")]
         oled: OLED,
     }
@@ -116,6 +119,8 @@ mod app {
         let usb_bus = ctx.local.bus.as_ref().unwrap();
 
         let usb_class = keyberon::new_class(usb_bus, Leds {caps_lock});
+
+        let mouse = Mouse::new(usb_bus);
 
         let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27db))
         .strings(&[StringDescriptors::default()
@@ -180,7 +185,7 @@ mod app {
                 usb_dev,
                 usb_class,
                 layout: Layout::new(&LAYERS),
-                use_right_usb: true,
+                mouse,
             },
             Local {
                 matrix,
@@ -188,6 +193,7 @@ mod app {
                 debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
                 tx, rx,
                 enter_dfu,
+                use_right_usb: true,
                 #[cfg(feature = "right")]
                 oled: OLED::new(
                     gpiob.pb10.into_alternate().set_open_drain(),
@@ -199,15 +205,8 @@ mod app {
        )
     }
 
-    #[task(priority = 3, capacity = 8, shared = [layout, use_right_usb])]
+    #[task(priority = 3, capacity = 8, shared = [layout])]
     fn handle_event(mut ctx: handle_event::Context, event: Event) {
-        if 
-            event == Event::Press(3, 9) &&
-            ctx.shared.layout.lock(|l| l.current_layer()) == 2
-        {
-            ctx.shared.use_right_usb.lock(|uru| *uru = !*uru);
-        }
-
         ctx.shared.layout.lock(|l| l.event(event))
     }
 
@@ -226,8 +225,8 @@ mod app {
     #[task(
         binds=TIM2,
         priority=1,
-        local=[debouncer, matrix, timer, tx, oled],
-        shared=[usb_dev, usb_class, layout, use_right_usb]
+        local=[debouncer, matrix, timer, tx, oled, use_right_usb],
+        shared=[usb_dev, usb_class, layout, mouse]
     )]
     fn tick(mut ctx: tick::Context) {
         ctx.local.timer.wait().ok();
@@ -244,15 +243,23 @@ mod app {
                 handle_event::spawn(e).unwrap();
             });
 
-        ctx.shared.layout.lock(|l| l.tick());
+        //ctx.shared.mouse.lock(|m| { m.report.vertical_wheel = 0; m.report.horizontal_wheel = 0 });
+        match ctx.shared.layout.lock(|l| l.tick()) {
+            CustomEvent::Press(CustomAction::USB) => *ctx.local.use_right_usb = !*ctx.local.use_right_usb,
+            CustomEvent::Press(CustomAction::M(maction)) => ctx.shared.mouse.lock(|m| m.handle_mouse_btn(maction, true)),
+            CustomEvent::Release(CustomAction::M(maction)) => ctx.shared.mouse.lock(|m| m.handle_mouse_btn(maction, false)),
+            _ => ()
+        }
 
-        let use_right_usb = ctx.shared.use_right_usb.lock(|u| *u);
+        let use_right_usb = ctx.local.use_right_usb;
 
         if ctx.shared.usb_dev.lock(|d| d.state()) == UsbDeviceState::Configured {
-            #[cfg(feature = "right")] let cond = use_right_usb;
-            #[cfg(not(feature = "right"))] let cond = !use_right_usb;
+            #[cfg(feature = "right")] let cond = *use_right_usb;
+            #[cfg(not(feature = "right"))] let cond = !*use_right_usb;
 
             if cond {
+                while let Ok(()) = ctx.shared.mouse.lock(|m| m.mouse.device().write_report(&m.report)) {}
+
                 let report: KbHidReport = ctx.shared.layout.lock(|l| l.keycodes().collect());
                 if ctx.shared.usb_class.lock(|k| k.device_mut().set_keyboard_report(report.clone())) {
                     while let Ok(0) = ctx.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
@@ -263,14 +270,13 @@ mod app {
         #[cfg(feature = "right")] 
         ctx.local.oled.draw(
             ctx.shared.layout.lock(|l| l.current_layer()),
-            use_right_usb
+            *use_right_usb
         )
     }
 
     #[idle(local = [enter_dfu])]
     fn idle(ctx: idle::Context) -> ! {
-        // if the two buttons and the reset button on the board are held
-        // and then the reset button is released this will load dfu
+        // if pa0 && pb12 are shorted and the board resets this will load dfu
         if *ctx.local.enter_dfu {
             unsafe { cortex_m::asm::bootload(0x1FFF0000 as _) }
         }
@@ -299,11 +305,11 @@ mod app {
     }
 
     use usb_device::class::UsbClass;
-    #[task(binds = OTG_FS, priority = 3, shared = [usb_dev, usb_class])]
+    #[task(binds = OTG_FS, priority = 3, shared = [usb_dev, usb_class, mouse])]
     fn usb(ctx: usb::Context) {
-        (ctx.shared.usb_dev, ctx.shared.usb_class)
-        .lock(|usb_dev, kb| {
-            if usb_dev.poll(&mut [kb]) { kb.poll() }
+        (ctx.shared.usb_dev, ctx.shared.usb_class, ctx.shared.mouse)
+        .lock(|usb_dev, kb, m| {
+            if usb_dev.poll(&mut [&mut m.mouse, kb]) { kb.poll() }
         });
     }
 }
