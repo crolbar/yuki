@@ -1,6 +1,6 @@
 use keyberon::action::{k, m, Action::*, HoldTapAction, HoldTapConfig};
 use keyberon::key_code::KeyCode::*;
-use crate::mouse::MAction;
+use crate::mouse::{MAction, Dir};
  
 pub enum CustomAction { M(MAction), USB }
 type Action = keyberon::action::Action<CustomAction>;
@@ -34,19 +34,25 @@ const CTRL_ENTER: Action = HoldTap(&HoldTapAction {
 
 const USB: Action = Custom(CustomAction::USB);
 
-const M1: Action = Custom(CustomAction::M(MAction::LeftMB));
-const M2: Action = Custom(CustomAction::M(MAction::RightMB));
-const M3: Action = Custom(CustomAction::M(MAction::MiddleMB));
+macro_rules! ma {
+    ($name:ident, $action:expr) => {
+        const $name: Action = Custom(CustomAction::M($action));
+    };
+}
 
-const UP: Action = Custom(CustomAction::M(MAction::Up));
-const DOWN: Action = Custom(CustomAction::M(MAction::Down));
-const LEFT: Action = Custom(CustomAction::M(MAction::Left));
-const RIGHT: Action = Custom(CustomAction::M(MAction::Right));
+ma!(M1, MAction::Left);
+ma!(M2, MAction::Right);
+ma!(M3, MAction::Middle);
 
-const SCROLL_UP: Action = Custom(CustomAction::M(MAction::ScrollUp));
-const SCROLL_DOWN: Action = Custom(CustomAction::M(MAction::ScrollDown));
-const SCROLL_LEFT: Action = Custom(CustomAction::M(MAction::ScrollLeft));
-const SCROLL_RIGHT: Action = Custom(CustomAction::M(MAction::ScrollRight));
+ma!(UP, MAction::Move(Dir::Up));
+ma!(DOWN, MAction::Move(Dir::Down));
+ma!(LEFT, MAction::Move(Dir::Left));
+ma!(RIGHT, MAction::Move(Dir::Right));
+
+ma!(SCROLL_UP, MAction::Scroll(Dir::Up));
+ma!(SCROLL_DOWN, MAction::Scroll(Dir::Down));
+ma!(SCROLL_LEFT, MAction::Scroll(Dir::Left));
+ma!(SCROLL_RIGHT, MAction::Scroll(Dir::Right));
 
 macro_rules! s {
     ($k:ident) => {

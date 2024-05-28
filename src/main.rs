@@ -243,8 +243,8 @@ mod app {
                 handle_event::spawn(e).unwrap();
             });
 
-        //ctx.shared.mouse.lock(|m| { m.report.vertical_wheel = 0; m.report.horizontal_wheel = 0 });
         match ctx.shared.layout.lock(|l| l.tick()) {
+            CustomEvent::NoEvent => (),
             CustomEvent::Press(CustomAction::USB) => *ctx.local.use_right_usb = !*ctx.local.use_right_usb,
             CustomEvent::Press(CustomAction::M(maction)) => ctx.shared.mouse.lock(|m| m.handle_mouse_btn(maction, true)),
             CustomEvent::Release(CustomAction::M(maction)) => ctx.shared.mouse.lock(|m| m.handle_mouse_btn(maction, false)),
@@ -258,12 +258,12 @@ mod app {
             #[cfg(not(feature = "right"))] let cond = !*use_right_usb;
 
             if cond {
-                while let Ok(()) = ctx.shared.mouse.lock(|m| m.mouse.device().write_report(&m.report)) {}
-
                 let report: KbHidReport = ctx.shared.layout.lock(|l| l.keycodes().collect());
                 if ctx.shared.usb_class.lock(|k| k.device_mut().set_keyboard_report(report.clone())) {
                     while let Ok(0) = ctx.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
                 }
+
+                while let Ok(()) = ctx.shared.mouse.lock(|m| m.mouse.device().write_report(&m.report)) {}
             }
         }
 
