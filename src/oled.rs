@@ -41,7 +41,7 @@ impl OLED {
         i2c2: I2C2,
         clocks: &hal::rcc::Clocks
     ) -> Self {
-        let display = Ssd1306::new(
+        let mut display = Ssd1306::new(
             ssd1306::I2CDisplayInterface::new(
                 I2c::new(
                     i2c2,
@@ -56,6 +56,7 @@ impl OLED {
             DisplaySize128x32,
             DisplayRotation::Rotate90,
         ).into_buffered_graphics_mode();
+        display.init().unwrap();
 
         Self {
             display,
