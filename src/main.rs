@@ -309,7 +309,11 @@ mod app {
     fn usb(ctx: usb::Context) {
         (ctx.shared.usb_dev, ctx.shared.usb_class, ctx.shared.mouse)
         .lock(|usb_dev, kb, m| {
-            if usb_dev.poll(&mut [&mut m.mouse, kb]) { kb.poll() }
+            if m.active {
+                if usb_dev.poll(&mut [&mut m.mouse, kb]) { kb.poll() }
+            } else {
+                if usb_dev.poll(&mut [kb]) { kb.poll() }
+            }
         });
     }
 }

@@ -14,6 +14,7 @@ pub enum Dir {
 }
 
 pub enum MAction {
+    ToggleActive,
     Left,
     Right,
     Middle,
@@ -28,13 +29,15 @@ type MouseDev = UsbHidClass<'static, UsbBusType, HList!(WheelMouse<'static, UsbB
 pub struct Mouse {
     pub mouse: MouseDev,
     pub report: WheelMouseReport,
+    pub active: bool,
 }
 
 impl Mouse {
     pub fn new(bus: &'static usb_device::bus::UsbBusAllocator<UsbBusType>) -> Self {
         Self {
             mouse: UsbHidClassBuilder::new().add_device(WheelMouseConfig::default()).build(bus),
-            report: WheelMouseReport::default()
+            report: WheelMouseReport::default(),
+            active: true,
         }
     }
 
@@ -54,6 +57,8 @@ impl Mouse {
                 MAction::Scroll(Dir::Down) => self.report.vertical_wheel = -1,
                 MAction::Scroll(Dir::Left) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_sub(1),
                 MAction::Scroll(Dir::Right) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_add(1),
+
+                MAction::ToggleActive => self.active = !self.active,
             }
         } else {
             match action {
@@ -70,6 +75,8 @@ impl Mouse {
                 MAction::Scroll(Dir::Down) => self.report.vertical_wheel = 0,
                 MAction::Scroll(Dir::Left) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_add(1),
                 MAction::Scroll(Dir::Right) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_sub(1),
+
+                MAction::ToggleActive => (),
             }
         }
     }

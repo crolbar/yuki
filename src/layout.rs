@@ -40,6 +40,8 @@ macro_rules! ma {
     };
 }
 
+ma!(TA, MAction::ToggleActive);
+
 ma!(M1, MAction::Left);
 ma!(M2, MAction::Right);
 ma!(M3, MAction::Middle);
@@ -81,7 +83,7 @@ pub const LAYERS: keyberon::layout::Layers<12, 4, 5, CustomAction> = keyberon::l
         [ n         n       t       LGui        Space   {CTRL_ENTER}        LShift  n       {ALT_TAB}   {USB}   n       n        ],
     }
     {
-        [ n         n   n       n               n           n               n       n               n           n           {SCROLL_RIGHT}  n ],
+        [ {TA}      n   n       n               n           n               n       n               n           n           {SCROLL_RIGHT}  n ],
         [ Escape    n   {M2}    {M3}            {M1}        n               n       {SCROLL_LEFT}   {UP}        n           n               n ],
         [ LShift    n   n       {SCROLL_DOWN}   {SCROLL_UP} n               n       {LEFT}          {DOWN}      {RIGHT}     n               n ],
         [ n         n   (2)     LGui            Space       {CTRL_ENTER}    LShift  (1)             {ALT_TAB}   {LAYER0}    n               n ],
