@@ -22,7 +22,7 @@ const MOD_F5: Action = m(&[LGui, F5].as_slice());
 const CTRL_TAB: Action = HoldTap(&HoldTapAction {
     timeout: 180,
     tap_hold_interval: 180,
-    config: HoldTapConfig::Default,
+    config: HoldTapConfig::HoldOnOtherKeyPress,
     hold: k(LCtrl),
     tap: k(Tab),
 });
@@ -44,7 +44,7 @@ macro_rules! ma {
 }
 
 ma!(TA, MAction::ToggleActive);
-ma!(TS, MAction::ToggleSpeedup);
+ma!(TS, MAction::Speedup);
 
 ma!(M1, MAction::Left);
 ma!(M2, MAction::Right);
