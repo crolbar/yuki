@@ -32,6 +32,9 @@ pub struct Mouse {
     pub report: WheelMouseReport,
     pub active: bool,
     move_btn_press_vals: [i8; 4],
+    scroll_dir: i8,
+    scroll_ticks: u8,
+    scroll_is_vert: bool,
 }
 
 
@@ -45,6 +48,38 @@ impl Mouse {
             report: WheelMouseReport::default(),
             active: true,
             move_btn_press_vals: [0; 4],
+            scroll_dir: 0,
+            scroll_ticks: 0,
+            scroll_is_vert: false,
+        }
+    }
+
+    pub fn mouse_tick(&mut self) {
+        if self.scroll_dir != 0 {
+
+            self.scroll_ticks += 1;
+
+            if self.scroll_ticks == 10 {
+                if self.scroll_is_vert {
+                    self.report.vertical_wheel = 0;
+                } else {
+                    self.report.horizontal_wheel = 0;
+                }
+            }
+
+            if self.scroll_ticks == 100 {
+                if self.scroll_is_vert {
+                    self.report.vertical_wheel = self.scroll_dir;
+                } else {
+                    self.report.horizontal_wheel = self.scroll_dir;
+                }
+
+                self.scroll_ticks = 0;
+            }
+        } else {
+            self.report.vertical_wheel = 0;
+            self.report.horizontal_wheel = 0;
+            self.scroll_ticks = 0;
         }
     }
 
@@ -72,10 +107,26 @@ impl Mouse {
                     self.report.x = self.report.x.saturating_add(self.move_btn_press_vals[3])
                 },
 
-                MAction::Scroll(Dir::Up) => self.report.vertical_wheel = 1,
-                MAction::Scroll(Dir::Down) => self.report.vertical_wheel = -1,
-                MAction::Scroll(Dir::Left) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_sub(1),
-                MAction::Scroll(Dir::Right) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_add(1),
+                MAction::Scroll(Dir::Up) => {
+                    self.scroll_dir = 1;
+                    self.scroll_is_vert = true;
+                    self.report.vertical_wheel = self.scroll_dir;
+                },
+                MAction::Scroll(Dir::Down) => {
+                    self.scroll_dir = -1;
+                    self.scroll_is_vert = true;
+                    self.report.vertical_wheel = self.scroll_dir;
+                },
+                MAction::Scroll(Dir::Left) => {
+                    self.scroll_dir = -1;
+                    self.scroll_is_vert = false;
+                    self.report.horizontal_wheel = self.scroll_dir;
+                },
+                MAction::Scroll(Dir::Right) => {
+                    self.scroll_dir = 1;
+                    self.scroll_is_vert = false;
+                    self.report.horizontal_wheel = self.scroll_dir;
+                },
 
                 MAction::Speedup => {
                     self.move_btn_press_vals.iter_mut().enumerate().for_each(|(i, v)| {
@@ -118,10 +169,15 @@ impl Mouse {
                     self.move_btn_press_vals[3] -= DEFAULT_SPEED;
                 },
 
-                MAction::Scroll(Dir::Up) => self.report.vertical_wheel = 0,
-                MAction::Scroll(Dir::Down) => self.report.vertical_wheel = 0,
-                MAction::Scroll(Dir::Left) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_add(1),
-                MAction::Scroll(Dir::Right) => self.report.horizontal_wheel = self.report.horizontal_wheel.saturating_sub(1),
+                MAction::Scroll(Dir::Up) |
+                MAction::Scroll(Dir::Down) | 
+                MAction::Scroll(Dir::Left) |
+                MAction::Scroll(Dir::Right) => {
+                    self.scroll_dir = 0;
+                    self.scroll_ticks = 0;
+                    self.report.vertical_wheel = 0;
+                    self.report.horizontal_wheel = 0;
+                },
 
                 MAction::Speedup => {
                     self.move_btn_press_vals.iter_mut().enumerate().for_each(|(i, v)| {

@@ -243,6 +243,7 @@ mod app {
                 handle_event::spawn(e).unwrap();
             });
 
+        ctx.shared.mouse.lock(|m| m.mouse_tick());
         match ctx.shared.layout.lock(|l| l.tick()) {
             CustomEvent::NoEvent => (),
             CustomEvent::Press(CustomAction::USB) => *ctx.local.use_right_usb = !*ctx.local.use_right_usb,
