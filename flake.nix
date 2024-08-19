@@ -1,30 +1,40 @@
 {
   inputs = {
-    nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
     rust-overlay.url = "github:oxalica/rust-overlay";
-    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs {
-          inherit system overlays;
-        };
-      in with pkgs;
-      {
-        devShells.default = mkShell {
-          buildInputs = [
-            cargo-binutils
-            pkg-config
-            dfu-util
-            (rust-bin.stable.latest.default.override {
-              targets = [ "thumbv7em-none-eabihf" ];
-              extensions = [ "rust-src" "llvm-tools-preview" ];
-            })
-          ];
-        };
-      }
-    );
+  outputs = {
+    nixpkgs,
+    flake-parts,
+    rust-overlay,
+    ...
+  } @ inputs: let
+    overlays = [(import rust-overlay)];
+  in
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = ["x86_64-linux"];
+
+      perSystem = {system, ...}: let
+        pkgs = import nixpkgs {inherit system overlays;};
+      in {
+        devShells.default = let
+          rust = pkgs.rust-bin.stable.latest.default.override {
+            targets = ["thumbv7em-none-eabihf"];
+            extensions = ["rust-src" "rust-analyzer" "llvm-tools-preview"];
+          };
+        in
+          with pkgs;
+            mkShell {
+              nativeBuildInputs = [
+                cargo-binutils
+                pkg-config
+                dfu-util
+                cargo-make
+                rust
+              ];
+            };
+      };
+    };
 }
