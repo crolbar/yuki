@@ -80,7 +80,7 @@ mod app {
         rx: serial::Rx<USART1>,
         enter_dfu: bool,
         use_right_usb: bool,
-        #[cfg(feature = "right")]
+        #[cfg(feature = "oled")]
         oled: OLED,
     }
 
@@ -210,13 +210,13 @@ mod app {
                 ),
                 tx, rx,
                 enter_dfu,
-                #[cfg(feature = "right")]
+                use_right_usb: USE_RIGHT_USB_INIT,
+                #[cfg(feature = "oled")]
                 oled: OLED::new(
                     gpiob.pb10.into_alternate().set_open_drain(),
                     gpiob.pb3.into_alternate().set_open_drain(),
                     ctx.device.I2C2, &clocks
                 )
-                use_right_usb: USE_RIGHT_USB_INIT,
             },
             init::Monotonics(),
        )
@@ -285,7 +285,7 @@ mod app {
             }
         }
 
-        #[cfg(feature = "right")] 
+        #[cfg(feature = "oled")]
         ctx.local.oled.draw(
             ctx.shared.layout.lock(|l| l.current_layer()),
             *use_right_usb

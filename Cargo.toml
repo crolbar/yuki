@@ -21,3 +21,4 @@ frunk = { version = "0.4", default-features = false }
 
 [features]
 right = []
+oled = []
