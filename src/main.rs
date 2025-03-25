@@ -39,6 +39,19 @@ mod app {
         mouse::Mouse,
     };
 
+
+    const MANUFACTURER: &str = "crolbar";
+    const PRODUCT: &str = "YUKI";
+    const SERIAL_NUMBER: &str = "1337";
+
+    const NUM_COLS: usize = 6;
+    const NUM_ROWS: usize = 4;
+
+    const NUM_LAYERS: usize = LAYERS.len();
+
+    const USE_RIGHT_USB_INIT: bool = true;
+
+
     pub struct Leds { caps_lock:  PC13<Output<PushPull>> }
 
     impl keyboard::Leds for Leds {
@@ -54,20 +67,20 @@ mod app {
     struct Shared {
         usb_dev: UsbDevice<'static, UsbBusType>,
         usb_class: keyberon::Class<'static, UsbBusType, Leds>,
-        layout: Layout<12, 4, 5, CustomAction>,
+        layout: Layout<{NUM_COLS*2}, NUM_ROWS, NUM_LAYERS, CustomAction>,
         mouse: Mouse
     }
 
     #[local]
     struct Local {
-        matrix: DirectPinMatrix<EPin<Input>, 6, 4>,
-        debouncer: Debouncer<[[bool; 6]; 4]>,
+        matrix: DirectPinMatrix<EPin<Input>, NUM_COLS, NUM_ROWS>,
+        debouncer: Debouncer<[[bool; NUM_COLS]; NUM_ROWS]>,
         timer: CounterHz<TIM2>,
         tx: serial::Tx<USART1>,
         rx: serial::Rx<USART1>,
         enter_dfu: bool,
         use_right_usb: bool,
-        #[cfg(feature = "right")]
+        #[cfg(feature = "oled")]
         oled: OLED,
     }
 
@@ -124,9 +137,9 @@ mod app {
 
         let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(0x16c0, 0x27db))
         .strings(&[StringDescriptors::default()
-            .manufacturer("crolbar")
-            .product("YUKI")
-            .serial_number("1337")])
+            .manufacturer(MANUFACTURER)
+            .product(PRODUCT)
+            .serial_number(SERIAL_NUMBER)])
         .unwrap()
         .build();
 
@@ -190,11 +203,15 @@ mod app {
             Local {
                 matrix,
                 timer,
-                debouncer: Debouncer::new([[false; 6]; 4], [[false; 6]; 4], 5),
+                debouncer: Debouncer::new(
+                    [[false; NUM_COLS]; NUM_ROWS],
+                    [[false; NUM_COLS]; NUM_ROWS],
+                    NUM_LAYERS.try_into().unwrap()
+                ),
                 tx, rx,
                 enter_dfu,
-                use_right_usb: true,
-                #[cfg(feature = "right")]
+                use_right_usb: USE_RIGHT_USB_INIT,
+                #[cfg(feature = "oled")]
                 oled: OLED::new(
                     gpiob.pb10.into_alternate().set_open_drain(),
                     gpiob.pb3.into_alternate().set_open_drain(),
@@ -268,7 +285,7 @@ mod app {
             }
         }
 
-        #[cfg(feature = "right")] 
+        #[cfg(feature = "oled")]
         ctx.local.oled.draw(
             ctx.shared.layout.lock(|l| l.current_layer()),
             *use_right_usb

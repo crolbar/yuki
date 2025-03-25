@@ -93,9 +93,9 @@ pub const LAYERS: keyberon::layout::Layers<12, 4, 5, CustomAction> = keyberon::l
         [ n         n       (2)     LGui            Space       {ALT_ENTER}     LShift  (1)             {CTRL_TAB}  {LAYER0}    n               n ]
     }
     {
-        [ Grave     Q       W       E       R       T                       Y       U       I           O       P       n        ]
+        [ Tab       Q       W       E       R       T                       Y       U       I           O       P       n        ]
         [ Escape    A       S       D       F       G                       H       J       K           L       SColon  Quote    ]
         [ LShift    Z       X       C       V       B                       N       M       Comma       Dot     Slash   t        ]
-        [ n         n       (2)     LGui    Space   {ALT_ENTER}             LShift (1)     {CTRL_TAB}   {LAYER0}n       n        ]
+        [ n         n       (2)     LCtrl   Space   {ALT_ENTER}             LShift (1)     {CTRL_TAB}   {LAYER0}n       n        ]
     }
 };
