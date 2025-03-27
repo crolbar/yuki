@@ -106,9 +106,9 @@ mod app {
         let gpiob = ctx.device.GPIOB.split();
         let gpioc = ctx.device.GPIOC.split();
 
+        // easier dfu enter keys
         let pa0 = gpioa.pa0.into_pull_up_input();
         let pb12 = gpiob.pb12.into_pull_up_input();
-        let enter_dfu = pa0.is_low() && pb12.is_low();
 
         let mut timer = ctx.device.TIM2.counter_hz(&mut clocks);
         timer.start(1.kHz()).unwrap();
@@ -143,6 +143,9 @@ mod app {
         .unwrap()
         .build();
 
+        // easier dfu check if keys are pressed
+        // do this a bit after setting the pins to high
+        let enter_dfu = pa0.is_low() && pb12.is_low();
 
         let matrix = interrupt::free(move |_| {
             DirectPinMatrix::new([

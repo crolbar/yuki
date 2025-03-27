@@ -2,7 +2,11 @@ use keyberon::action::{k, m, Action::*, HoldTapAction, HoldTapConfig};
 use keyberon::key_code::KeyCode::*;
 use crate::mouse::{MAction, Dir};
  
-pub enum CustomAction { M(MAction), USB }
+pub enum CustomAction {
+    M(MAction),
+    USB
+}
+
 type Action = keyberon::action::Action<CustomAction>;
 
 const LAYER0: Action = Action::DefaultLayer(0);
