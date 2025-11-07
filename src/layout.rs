@@ -59,10 +59,10 @@ ma!(DOWN, MAction::Move(Dir::Down));
 ma!(LEFT, MAction::Move(Dir::Left));
 ma!(RIGHT, MAction::Move(Dir::Right));
 
-ma!(SCROLL_UP, MAction::Scroll(Dir::Up));
-ma!(SCROLL_DOWN, MAction::Scroll(Dir::Down));
-ma!(SCROLL_LEFT, MAction::Scroll(Dir::Left));
-ma!(SCROLL_RIGHT, MAction::Scroll(Dir::Right));
+ma!(SCROLLU, MAction::Scroll(Dir::Up));
+ma!(SCROLLD, MAction::Scroll(Dir::Down));
+ma!(SCROLLL, MAction::Scroll(Dir::Left));
+ma!(SCROLLR, MAction::Scroll(Dir::Right));
 
 macro_rules! s {
     ($k:ident) => {
@@ -74,37 +74,37 @@ macro_rules! s {
 pub const LAYERS: keyberon::layout::Layers<12, 4, 5, CustomAction> = keyberon::layout::layout! {
     // DVORAK
     {
-        [ Grave   Quote   Comma       Dot   P       Y                   F        G      C           R     L   Slash  ]
-        [ Escape  A       O           E     U       I                   D        H      T           N     S   Minus  ]
-        [ LShift  SColon  Q           J     K       X                   B        M      W           V     Z   Delete ]
-        [ n       n       (2)         LGui  Space   {ALT_ENTER}        LShift  (1)    {CTRL_TAB}    (3)   n   n      ]
+        [ Grave     Quote     Comma     Dot       P              Y                        F           G         C           R            L         Slash             ]
+        [ Escape    A         O         E         U              I                        D           H         T           N            S         Minus             ]
+        [ LShift    SColon    Q         J         K              X                        B           M         W           V            Z         Delete            ]
+        [ n         n         (2)       LGui      Space          {ALT_ENTER}              LShift      (1)       {CTRL_TAB}  (3)          n         n                 ]
     }
     // NUMBERS & SYMBOLS
     {
-        [ Tab       {s!(Kb1)}   {s!(Kb2)}   {s!(Kb3)}   {s!(Kb4)}       {s!(Kb5)}               {s!(Kb6)}       {s!(Kb7)}   {s!(Kb8)}   {s!(Kb9)}    {s!(Kb0)}   MediaNextSong      ]
-        [ t         {k(Kb1)}    {k(Kb2)}    {k(Kb3)}    {k(Kb4)}        {k(Kb5)}                {k(Kb6)}        {k(Kb7)}    {k(Kb8)}    {k(Kb9)}     {k(Kb0)}    MediaPlayPause     ]
-        [ LShift    {CTRL_BS}   LBracket    RBracket    {s!(LBracket)}  {s!(RBracket)}          {s!(Equal)}     Equal       Bslash      {s!(Bslash)} BSpace      MediaPreviousSong  ]
-        [ n         n           t           LGui        Space           {ALT_ENTER}             LShift          (1)         {CTRL_TAB}   t            n          n                  ]
+        [ Tab       {s!(Kb1)} {s!(Kb2)} {s!(Kb3)} {s!(Kb4)}      {s!(Kb5)}                {s!(Kb6)}   {s!(Kb7)} {s!(Kb8)}   {s!(Kb9)}    {s!(Kb0)} MediaNextSong     ]
+        [ t         {k(Kb1)}  {k(Kb2)}  {k(Kb3)}  {k(Kb4)}       {k(Kb5)}                 {k(Kb6)}    {k(Kb7)}  {k(Kb8)}    {k(Kb9)}     {k(Kb0)}  MediaPlayPause    ]
+        [ LShift    {CTRL_BS} LBracket  RBracket  {s!(LBracket)} {s!(RBracket)}           {s!(Equal)} Equal     Bslash      {s!(Bslash)} BSpace    MediaPreviousSong ]
+        [ n         n         t         LGui      Space          {ALT_ENTER}              LShift      (1)       {CTRL_TAB}  t            n         n                 ]
     }
     // MACROS
     {
-        [ {LAYER3}  F1      F2      F3          F4      F5                  F6      F7      F8          F9      F10     {LAYER4} ]
-        [ CapsLock  {LAYER4}t       Insert      Pause   PScreen             Home    t       Up          F11     F12     PgUp     ]
-        [ LShift    {UNDO}  {CUT}   {COPY}      {PASTE} {REDO}              End     Left    Down        Right   t       PgDown   ]
-        [ n         n       t       LGui        {LAYER0}{ALT_ENTER}         LShift  (1)     {CTRL_TAB}  {USB}   n       n        ]
+        [ {LAYER3}  F1        F2        F3        F4             F5                       F6          F7        F8          F9           F10       {LAYER4}          ]
+        [ CapsLock  {LAYER4}  t         Insert    Pause          PScreen                  Home        t         Up          F11          F12       PgUp              ]
+        [ LShift    {UNDO}    {CUT}     {COPY}    {PASTE}        {REDO}                   End         Left      Down        Right        t         PgDown            ]
+        [ n         n         t         LGui      {LAYER0}       {ALT_ENTER}              LShift      (1)       {CTRL_TAB}  {USB}        n         n                 ]
     }
     // MOUSE
     {
-        [ {TA}      Mute    VolDown VolUp           {MOD_F4}    {MOD_F5}        n       n               n           n           {SCROLL_RIGHT}  n ]
-        [ Escape    n       {M2}    {M3}            {M1}        {TS}            n       {SCROLL_LEFT}   {UP}        n           n               n ]
-        [ LShift    n       n       {SCROLL_DOWN}   {SCROLL_UP} n               n       {LEFT}          {DOWN}      {RIGHT}     n               n ]
-        [ n         n       (2)     LGui            Space       {ALT_ENTER}     LShift  (1)             {CTRL_TAB}  {LAYER0}    n               n ]
+        [ {TA}      Mute      VolDown   VolUp     {MOD_F4}       {MOD_F5}                 n           n         n           n            {SCROLLR} n                 ]
+        [ Escape    n         {M2}      {M3}      {M1}           {TS}                     n           {SCROLLL} {UP}        n            n         n                 ]
+        [ LShift    n         n         {SCROLLD} {SCROLLU}      n                        n           {LEFT}    {DOWN}      {RIGHT}      n         n                 ]
+        [ n         n         (2)       LGui      Space          {ALT_ENTER}              LShift      (1)       {CTRL_TAB}  {LAYER0}     n         n                 ]
     }
     // QWERTY
     {
-        [ Tab       Q       W       E       R       T                       Y       U       I           O       P       n        ]
-        [ Escape    A       S       D       F       G                       H       J       K           L       SColon  Quote    ]
-        [ LShift    Z       X       C       V       B                       N       M       Comma       Dot     Slash   t        ]
-        [ n         n       (2)     LCtrl   Space   {ALT_ENTER}             LShift (1)     {CTRL_TAB}   {LAYER0}n       n        ]
+        [ Tab       Q         W         E         R              T                        Y           U         I           O            P         n                 ]
+        [ Escape    A         S         D         F              G                        H           J         K           L            SColon    Quote             ]
+        [ LShift    Z         X         C         V              B                        N           M         Comma       Dot          Slash     t                 ]
+        [ n         n         (2)       LCtrl     Space          {ALT_ENTER}              LShift     (1)        {CTRL_TAB}  {LAYER0}     n         n                 ]
     }
 };
