@@ -11,13 +11,13 @@ Made with [Keyberon](https://github.com/TeXitoi/keyberon)
 <br/>
 
 ### Layers
-| Layer                                                                                     | Description              |
-|-------------------------------------------------------------------------------------------|--------------------------|
-| [layer 0](http://www.keyboard-layout-editor.com/#/gists/67aaf9d778e9b2ddf6e25b263cbe5ed5) | Firmware Dvorak          |
-| [layer 1](http://www.keyboard-layout-editor.com/#/gists/5f7a4db98ea4d0b959304c4fe80d1d7f) | Numbers & Symbols        |
-| [layer 2](http://www.keyboard-layout-editor.com/#/gists/3af9d73abaec154f56b99b5a6c55cf5e) | Less used keys & Macros  |
-| layer 3                                                                                   | Mouse movement & buttons |
-| layer 4                                                                                   | Qwerty                   |
+| Layer                                                                                      | Description              |
+|--------------------------------------------------------------------------------------------|--------------------------|
+| [Layer 0](https://www.keyboard-layout-editor.com/#/gists/67aaf9d778e9b2ddf6e25b263cbe5ed5) | Firmware Dvorak          |
+| [Layer 1](https://www.keyboard-layout-editor.com/#/gists/5f7a4db98ea4d0b959304c4fe80d1d7f) | Numbers & Symbols        |
+| [Layer 2](https://www.keyboard-layout-editor.com/#/gists/3af9d73abaec154f56b99b5a6c55cf5e) | Less used keys & Macros  |
+| [Layer 3](https://www.keyboard-layout-editor.com/#/gists/ff861bef767ebb767786974deb496a8b) | Mouse movement & buttons |
+| [Layer 4](https://www.keyboard-layout-editor.com/#/gists/a4c8d92eb2a6d883765b2eac82c46641) | Qwerty                   |
 
 <br/>
 
